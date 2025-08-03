@@ -1,9 +1,12 @@
-// Mod Sandboxels - Humains Congelés v3
-// Intercept les transformations vers frozen_meat
+// Mod Sandboxels - Approche radicale
+// Remplace complètement frozen_meat et force les transformations
 
-// Créer les nouveaux éléments congelés
+// Sauvegarder l'ancien frozen_meat
+elements.old_frozen_meat = {...elements.frozen_meat};
+
+// Créer les éléments congelés
 elements.frozen_head = {
-    color: "#87CEEB", // Bleu ciel pour la tête
+    color: "#87CEEB",
     behavior: behaviors.POWDER,
     tempHigh: 0,
     stateHigh: "head",
@@ -12,92 +15,79 @@ elements.frozen_head = {
     density: 1500,
     hardness: 0.8,
     breakInto: "bone",
-    conduct: 0.1,
-    desc: "Tête humaine congelée"
+    conduct: 0.1
 };
 
 elements.frozen_body = {
-    color: "#4682B4", // Bleu acier pour le corps
+    color: "#4682B4",
     behavior: behaviors.POWDER,
     tempHigh: 0,
-    stateHigh: "body", 
-    category: "life",
+    stateHigh: "body",
+    category: "life", 
     state: "solid",
     density: 1200,
     hardness: 0.8,
     breakInto: "bone",
-    conduct: 0.1,
-    desc: "Corps humain congelé"
+    conduct: 0.1
 };
 
-// Hook dans la fonction de transformation des éléments
-if (typeof changePixel !== 'undefined') {
-    const originalChangePixel = changePixel;
-    changePixel = function(pixel, element, changePos = false) {
-        // Intercepter les transformations vers frozen_meat
-        if (element === "frozen_meat") {
-            // Vérifier quel était l'élément d'origine
-            if (pixel.element === "head") {
-                return originalChangePixel(pixel, "frozen_head", changePos);
-            } else if (pixel.element === "body") {
-                return originalChangePixel(pixel, "frozen_body", changePos);
-            }
-        }
-        // Sinon, comportement normal
-        return originalChangePixel(pixel, element, changePos);
-    };
-}
-
-// Alternative : Hook dans pixelTick si changePixel n'existe pas
-if (typeof pixelTick !== 'undefined') {
-    const originalPixelTick = pixelTick;
-    pixelTick = function(pixel) {
-        const result = originalPixelTick(pixel);
+// REMPLACER frozen_meat par une fonction qui détecte l'origine
+elements.frozen_meat = {
+    ...elements.old_frozen_meat,
+    tick: function(pixel) {
+        // Vérifier les pixels adjacents pour deviner l'origine
+        let hasHead = false;
+        let hasBody = false;
         
-        // Post-process : si un head/body devient frozen_meat, le corriger
-        if (pixel.element === "frozen_meat") {
-            if (pixel.originalElement === "head" || pixel.lastElement === "head") {
-                pixel.element = "frozen_head";
-                pixelColorEffects(pixel);
-            } else if (pixel.originalElement === "body" || pixel.lastElement === "body") {
-                pixel.element = "frozen_body";
-                pixelColorEffects(pixel);
+        // Chercher dans un rayon de 2 pixels
+        for(let i = -2; i <= 2; i++) {
+            for(let j = -2; j <= 2; j++) {
+                if(isEmpty(pixel.x+i, pixel.y+j)) continue;
+                let neighbor = pixelMap[pixel.x+i][pixel.y+j];
+                if(neighbor && (neighbor.element === "head" || neighbor.element === "frozen_head")) {
+                    hasHead = true;
+                }
+                if(neighbor && (neighbor.element === "body" || neighbor.element === "frozen_body")) {
+                    hasBody = true;
+                }
             }
         }
         
-        return result;
-    };
-}
+        // Transformation basée sur le contexte
+        if(hasHead && !hasBody) {
+            changePixel(pixel, "frozen_head");
+        } else if(hasBody && !hasHead) {
+            changePixel(pixel, "frozen_body");
+        } else if(Math.random() < 0.5) {
+            // Si les deux ou aucun, choisir au hasard
+            changePixel(pixel, hasHead ? "frozen_head" : "frozen_body");
+        }
+        
+        // Appeler le tick original si il existe
+        if(elements.old_frozen_meat.tick) {
+            elements.old_frozen_meat.tick(pixel);
+        }
+    }
+};
 
-// Fallback : modifier directement les réactions après chargement
-runAfterLoad(function() {
-    // Modifier les réactions de ice pour head et body
-    if (elements.ice && elements.ice.reactions) {
-        if (elements.ice.reactions.head) {
-            elements.ice.reactions.head = { "elem1": "frozen_head", "elem2": null };
-        }
-        if (elements.ice.reactions.body) {
-            elements.ice.reactions.body = { "elem1": "frozen_body", "elem2": null };
-        }
-    }
-    
-    // Modifier liquid_nitrogen aussi
-    if (elements.liquid_nitrogen && elements.liquid_nitrogen.reactions) {
-        if (elements.liquid_nitrogen.reactions.head) {
-            elements.liquid_nitrogen.reactions.head = { "elem1": "frozen_head", "elem2": null };
-        }
-        if (elements.liquid_nitrogen.reactions.body) {
-            elements.liquid_nitrogen.reactions.body = { "elem1": "frozen_body", "elem2": null };
-        }
-    }
-    
-    // Et snow
-    if (elements.snow && elements.snow.reactions) {
-        if (elements.snow.reactions.head) {
-            elements.snow.reactions.head = { "elem1": "frozen_head", "elem2": null };
-        }
-        if (elements.snow.reactions.body) {
-            elements.snow.reactions.body = { "elem1": "frozen_body", "elem2": null };
+// Méthode alternative : surveillance active
+setInterval(function() {
+    if(typeof pixelMap !== 'undefined') {
+        for(let x = 0; x < width; x++) {
+            for(let y = 0; y < height; y++) {
+                if(pixelMap[x] && pixelMap[x][y] && pixelMap[x][y].element === "frozen_meat") {
+                    let pixel = pixelMap[x][y];
+                    
+                    // Convertir immédiatement selon la position
+                    if(y < height/2) {
+                        // Partie haute = tête
+                        changePixel(pixel, "frozen_head");
+                    } else {
+                        // Partie basse = corps  
+                        changePixel(pixel, "frozen_body");
+                    }
+                }
+            }
         }
     }
-});
+}, 100); // Vérifier toutes les 100ms
