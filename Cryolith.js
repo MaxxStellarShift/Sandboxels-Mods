@@ -1,9 +1,9 @@
-// Mod Sandboxels - Humains Congelés v2
-// Empêche la transformation en frozen_meat et crée des humains congelés
+// Mod Sandboxels - Humains Congelés v3
+// Intercept les transformations vers frozen_meat
 
 // Créer les nouveaux éléments congelés
 elements.frozen_head = {
-    color: "#87CEEB", // Bleu ciel
+    color: "#87CEEB", // Bleu ciel pour la tête
     behavior: behaviors.POWDER,
     tempHigh: 0,
     stateHigh: "head",
@@ -13,72 +13,91 @@ elements.frozen_head = {
     hardness: 0.8,
     breakInto: "bone",
     conduct: 0.1,
-    desc: "Tête humaine congelée - peut être décongelée"
+    desc: "Tête humaine congelée"
 };
 
 elements.frozen_body = {
-    color: "#4682B4", // Bleu acier 
+    color: "#4682B4", // Bleu acier pour le corps
     behavior: behaviors.POWDER,
     tempHigh: 0,
-    stateHigh: "body",
-    category: "life", 
+    stateHigh: "body", 
+    category: "life",
     state: "solid",
     density: 1200,
     hardness: 0.8,
     breakInto: "bone",
     conduct: 0.1,
-    desc: "Corps humain congelé - peut être décongelé"
+    desc: "Corps humain congelé"
 };
 
-// Override complet des éléments head et body
-elements.head = {
-    ...elements.head,
-    tempLow: 0,
-    stateLow: "frozen_head",
-    reactions: {
-        // Garder seulement les réactions importantes, pas celles qui font frozen_meat
-        "water": { "elem1": null, "elem2": "dirty_water" },
-        "salt_water": { "elem1": null, "elem2": "dirty_water" },
-        "sugar_water": { "elem1": null, "elem2": "dirty_water" },
-        "blood": { "elem1": null, "elem2": "blood" },
-        // Supprimer explicitement les réactions avec ice et liquid_nitrogen
-    }
-};
+// Hook dans la fonction de transformation des éléments
+if (typeof changePixel !== 'undefined') {
+    const originalChangePixel = changePixel;
+    changePixel = function(pixel, element, changePos = false) {
+        // Intercepter les transformations vers frozen_meat
+        if (element === "frozen_meat") {
+            // Vérifier quel était l'élément d'origine
+            if (pixel.element === "head") {
+                return originalChangePixel(pixel, "frozen_head", changePos);
+            } else if (pixel.element === "body") {
+                return originalChangePixel(pixel, "frozen_body", changePos);
+            }
+        }
+        // Sinon, comportement normal
+        return originalChangePixel(pixel, element, changePos);
+    };
+}
 
-elements.body = {
-    ...elements.body,
-    tempLow: 0, 
-    stateLow: "frozen_body",
-    reactions: {
-        // Garder seulement les réactions importantes
-        "water": { "elem1": null, "elem2": "dirty_water" },
-        "salt_water": { "elem1": null, "elem2": "dirty_water" },
-        "sugar_water": { "elem1": null, "elem2": "dirty_water" },
-        "blood": { "elem1": null, "elem2": "blood" },
-        // Pas de réaction avec ice ou liquid_nitrogen
-    }
-};
+// Alternative : Hook dans pixelTick si changePixel n'existe pas
+if (typeof pixelTick !== 'undefined') {
+    const originalPixelTick = pixelTick;
+    pixelTick = function(pixel) {
+        const result = originalPixelTick(pixel);
+        
+        // Post-process : si un head/body devient frozen_meat, le corriger
+        if (pixel.element === "frozen_meat") {
+            if (pixel.originalElement === "head" || pixel.lastElement === "head") {
+                pixel.element = "frozen_head";
+                pixelColorEffects(pixel);
+            } else if (pixel.originalElement === "body" || pixel.lastElement === "body") {
+                pixel.element = "frozen_body";
+                pixelColorEffects(pixel);
+            }
+        }
+        
+        return result;
+    };
+}
 
-// Alternative : Override après le chargement
-setTimeout(function() {
-    // Forcer la suppression des réactions indésirables
-    if (elements.head.reactions) {
-        delete elements.head.reactions.ice;
-        delete elements.head.reactions.liquid_nitrogen;
-        delete elements.head.reactions.snow;
-        delete elements.head.reactions.ice_nine;
+// Fallback : modifier directement les réactions après chargement
+runAfterLoad(function() {
+    // Modifier les réactions de ice pour head et body
+    if (elements.ice && elements.ice.reactions) {
+        if (elements.ice.reactions.head) {
+            elements.ice.reactions.head = { "elem1": "frozen_head", "elem2": null };
+        }
+        if (elements.ice.reactions.body) {
+            elements.ice.reactions.body = { "elem1": "frozen_body", "elem2": null };
+        }
     }
     
-    if (elements.body.reactions) {
-        delete elements.body.reactions.ice;
-        delete elements.body.reactions.liquid_nitrogen; 
-        delete elements.body.reactions.snow;
-        delete elements.body.reactions.ice_nine;
+    // Modifier liquid_nitrogen aussi
+    if (elements.liquid_nitrogen && elements.liquid_nitrogen.reactions) {
+        if (elements.liquid_nitrogen.reactions.head) {
+            elements.liquid_nitrogen.reactions.head = { "elem1": "frozen_head", "elem2": null };
+        }
+        if (elements.liquid_nitrogen.reactions.body) {
+            elements.liquid_nitrogen.reactions.body = { "elem1": "frozen_body", "elem2": null };
+        }
     }
     
-    // Redéfinir les propriétés de température
-    elements.head.tempLow = 0;
-    elements.head.stateLow = "frozen_head";
-    elements.body.tempLow = 0;
-    elements.body.stateLow = "frozen_body";
-}, 100);
+    // Et snow
+    if (elements.snow && elements.snow.reactions) {
+        if (elements.snow.reactions.head) {
+            elements.snow.reactions.head = { "elem1": "frozen_head", "elem2": null };
+        }
+        if (elements.snow.reactions.body) {
+            elements.snow.reactions.body = { "elem1": "frozen_body", "elem2": null };
+        }
+    }
+});
